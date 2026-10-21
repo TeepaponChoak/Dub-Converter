@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dub – YouTube to MP3 or MP4</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+:root { --bg:#2B3FD6; --ink:#F3F1FF; --accent:#FFE45E; --on-accent:#1A1F5C; --panel:rgba(255,255,255,.1);
+  --font:"Bricolage Grotesque",system-ui,-apple-system,"Segoe UI",sans-serif; }
+body[data-mode="mp4"] { --bg:#0E3B2F; --ink:#EFFAF4; --accent:#FF9EC4; --on-accent:#3A0F22; }
+* { box-sizing:border-box; }
+html,body { margin:0; }
+body { min-height:100vh; background:var(--bg); color:var(--ink); font-family:var(--font);
+  transition:background .5s ease, color .5s ease; display:flex; justify-content:center; padding:48px 20px; }
+main { width:100%; max-width:680px; }
+.brand { font-weight:800; font-size:1.25rem; letter-spacing:-.02em; display:flex; align-items:center; gap:10px; }
+.dot { width:14px; height:14px; border-radius:50%; background:var(--accent); transition:background .5s; }
+h1 { font-size:clamp(2.6rem,9vw,5rem); line-height:.95; letter-spacing:-.04em; font-weight:800; margin:56px 0 12px; }
+.sub { font-size:1.1rem; opacity:.8; margin:0 0 36px; max-width:46ch; }
+
+.switch { position:relative; display:grid; grid-template-columns:1fr 1fr; background:var(--panel);
+  border-radius:999px; padding:6px; margin-bottom:16px; }
+.switch .thumb { position:absolute; top:6px; bottom:6px; left:6px; width:calc(50% - 6px); border-radius:999px;
+  background:var(--accent); transition:transform .35s cubic-bezier(.5,1.4,.5,1), background .5s; }
+body[data-mode="mp4"] .thumb { transform:translateX(100%); }
+.switch button { position:relative; z-index:1; background:none; border:0; font:inherit; font-weight:600;
+  font-size:1.05rem; padding:14px 8px; color:var(--ink); cursor:pointer; border-radius:999px; transition:color .3s; }
+.switch button[aria-pressed="true"] { color:var(--on-accent); }
+.switch small { display:block; font-weight:400; font-size:.8rem; opacity:.75; }
+
+.field { display:flex; gap:10px; flex-wrap:wrap; }
+input[type=url], select { font:inherit; font-size:1rem; color:var(--ink); background:var(--panel);
+  border:2px solid transparent; border-radius:16px; padding:16px 18px; }
+input[type=url] { flex:1 1 300px; min-width:0; }
+select { flex:0 0 auto; cursor:pointer; }
+select option { color:#111; }
+input::placeholder { color:var(--ink); opacity:.55; }
+:is(input,select,button,a):focus-visible { outline:3px solid var(--accent); outline-offset:3px; }
+
+.go { width:100%; margin-top:12px; font:inherit; font-weight:800; font-size:1.2rem; letter-spacing:-.01em;
+  padding:18px; border:0; border-radius:16px; cursor:pointer; background:var(--accent); color:var(--on-accent);
+  transition:transform .15s, background .5s, opacity .2s; display:block; text-align:center; text-decoration:none; }
+.go[hidden] { display:none; }
+.go:hover:not(:disabled) { transform:translateY(-2px); }
+.go:disabled { opacity:.45; cursor:not-allowed; }
+
+.preview { display:none; gap:16px; align-items:center; background:var(--panel); border-radius:20px;
+  padding:12px; margin-top:16px; }
+.preview.show { display:flex; }
+.preview img { width:128px; aspect-ratio:16/9; object-fit:cover; border-radius:12px; background:rgba(0,0,0,.25); }
+.preview b { display:block; font-weight:600; line-height:1.25; }
+.preview span { opacity:.7; font-size:.9rem; }
+
+.tape { display:none; margin-top:20px; }
+.tape.show { display:block; }
+.tape .row { display:flex; justify-content:space-between; font-weight:600; margin-bottom:8px; }
+.track { height:18px; background:var(--panel); border-radius:999px; overflow:hidden; }
+.fill { height:100%; width:0; background:var(--accent);
+  background-image:repeating-linear-gradient(115deg,rgba(0,0,0,.14) 0 8px,transparent 8px 16px);
+  background-size:32px 100%; transition:width .4s ease, background-color .5s; animation:slide 1s linear infinite; }
+.tape.done .fill { animation:none; background-image:none; }
+@keyframes slide { to { background-position:32px 0; } }
+.msg { margin-top:14px; min-height:1.4em; font-weight:600; }
+.msg.err { color:var(--accent); }
+footer { margin-top:56px; font-size:.85rem; opacity:.6; max-width:60ch; }
+@media (prefers-reduced-motion:reduce) { * { transition:none !important; animation:none !important; } }
+</style>
+</head>
+<body data-mode="mp3">
+<main>
+  <div class="brand"><span class="dot"></span>Dub</div>
+  <h1>Link in.<br>File out.</h1>
+  <p class="sub">Paste a YouTube link, choose audio or video, and download the result.</p>
+
+  <div class="switch" role="group" aria-label="Output format">
+    <span class="thumb"></span>
+    <button type="button" id="b-mp3" aria-pressed="true">MP3<small>Audio only</small></button>
+    <button type="button" id="b-mp4" aria-pressed="false">MP4<small>Video + audio</small></button>
+  </div>
+
+  <div class="field">
+    <input type="url" id="url" placeholder="Paste a YouTube link" aria-label="YouTube link" autocomplete="off">
+    <select id="quality" aria-label="Quality"></select>
+  </div>
+
+  <div class="preview" id="preview">
+    <img id="thumb" alt="">
+    <div><b id="title"></b><span id="meta"></span></div>
+  </div>
+
+  <button class="go" id="go" disabled>Convert to MP3</button>
+  <a class="go" id="dl" hidden>Download file</a>
+
+  <div class="tape" id="tape">
+    <div class="row"><span id="stage">Downloading</span><span id="pct">0%</span></div>
+    <div class="track"><div class="fill" id="fill"></div></div>
+  </div>
+  <div class="msg" id="msg" role="status" aria-live="polite"></div>
+
+  <footer>Only convert videos you own, that are Creative Commons, or that you have permission to download. Downloading may break YouTube’s Terms of Service.</footer>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const QUALITY = {
+  mp3: [["128","128 kbps"],["192","192 kbps"],["320","320 kbps"]],
+  mp4: [["360","360p"],["480","480p"],["720","720p HD"],["1080","1080p Full HD"]]
+};
+let mode = "mp3", valid = false, timer = null, poll = null;
+
+function setMode(m) {
+  mode = m;
+  document.body.dataset.mode = m;
+  $("b-mp3").setAttribute("aria-pressed", m === "mp3");
+  $("b-mp4").setAttribute("aria-pressed", m === "mp4");
+  $("quality").innerHTML = QUALITY[m].map(([v,l]) => `<option value="${v}">${l}</option>`).join("");
+  $("quality").value = m === "mp3" ? "192" : "720";
+  $("go").textContent = "Convert to " + m.toUpperCase();
+  reset();
+}
+function reset() { $("dl").hidden = true; $("go").hidden = false; $("tape").classList.remove("show","done"); }
+function say(t, err) { $("msg").textContent = t || ""; $("msg").className = "msg" + (err ? " err" : ""); }
+async function api(path, body) {
+  const r = await fetch(path, body ? {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)} : undefined);
+  const t = await r.text(); let d;
+  try { d = JSON.parse(t); }
+  catch { throw new Error("The server sent an unexpected reply. Open this page at http://127.0.0.1:5000 (not from the file) and check the terminal for errors."); }
+  if (!r.ok) throw new Error(d.error || "Request failed.");
+  return d;
+}
+const fmt = s => s ? Math.floor(s/60) + ":" + String(s%60).padStart(2,"0") : "";
+
+$("b-mp3").onclick = () => setMode("mp3");
+$("b-mp4").onclick = () => setMode("mp4");
+
+$("url").addEventListener("input", () => {
+  clearTimeout(timer); valid = false; $("go").disabled = true; reset();
+  $("preview").classList.remove("show"); say("");
+  const url = $("url").value.trim();
+  if (!url) return;
+  timer = setTimeout(async () => {
+    say("Checking link…");
+    try {
+      const d = await api("/api/info", {url});
+      $("thumb").src = d.thumbnail || ""; $("title").textContent = d.title;
+      $("meta").textContent = [d.channel, fmt(d.duration)].filter(Boolean).join(" • ");
+      $("preview").classList.add("show"); valid = true; $("go").disabled = false; say("");
+    } catch (e) { say(e.message || "Couldn’t read that link.", true); }
+  }, 450);
+});
+
+$("go").onclick = async () => {
+  if (!valid) return;
+  $("go").disabled = true; say(""); $("tape").classList.remove("done"); $("tape").classList.add("show");
+  $("fill").style.width = "0%"; $("pct").textContent = "0%"; $("stage").textContent = "Downloading";
+  try {
+    const d = await api("/api/convert", {url:$("url").value.trim(), mode, quality:$("quality").value});
+    poll = setInterval(() => check(d.id), 700);
+  } catch (e) { say(e.message, true); $("go").disabled = false; }
+};
+
+async function check(id) {
+  let j;
+  try { j = await api("/api/job/" + id); }
+  catch (e) { clearInterval(poll); $("tape").classList.remove("show"); $("go").disabled = false; say(e.message, true); return; }
+  $("fill").style.width = (j.progress || 0) + "%";
+  $("pct").textContent = Math.round(j.progress || 0) + "%";
+  $("stage").textContent = j.stage || "Working";
+  if (j.status === "done") {
+    clearInterval(poll); $("tape").classList.add("done");
+    $("dl").href = "/download/" + id; $("dl").textContent = "Download " + mode.toUpperCase();
+    $("dl").hidden = false; $("go").hidden = true; say("Ready. Your file is done.");
+  } else if (j.status === "error") {
+    clearInterval(poll); $("tape").classList.remove("show"); $("go").disabled = false;
+    say("Conversion failed: " + j.error, true);
+  }
+}
+setMode("mp3");
+</script>
+</body>
+</html>
