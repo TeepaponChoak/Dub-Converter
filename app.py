@@ -1,7 +1,7 @@
 """Run:  pip install -r requirements.txt   (ffmpeg must be on PATH)
         python app.py   ->  open http://127.0.0.1:5000
 Only convert content you own or have permission to download."""
-import re, threading, uuid
+import re, threading, time, uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -23,6 +23,26 @@ for _c in (os.environ.get("FFMPEG_LOCATION"), BASE / "ffmpeg" / "bin", BASE / "f
         FFMPEG_DIR = str(_c)
         break
 HAS_FFMPEG = bool(FFMPEG_DIR or _sh.which("ffmpeg"))
+MAX_JOBS = int(os.environ.get("MAX_JOBS", "3"))  # concurrent conversions
+KEEP_SECONDS = 1800                               # delete files/jobs after 30 min
+
+
+def cleanup():
+    while True:
+        time.sleep(300)
+        now = time.time()
+        for f in OUT.iterdir():
+            try:
+                if now - f.stat().st_mtime > KEEP_SECONDS:
+                    f.unlink()
+            except OSError:
+                pass
+        for jid, j in list(JOBS.items()):
+            if now - j["t"] > KEEP_SECONDS:
+                JOBS.pop(jid, None)
+
+
+threading.Thread(target=cleanup, daemon=True).start()
 HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"}
 
 
@@ -103,8 +123,10 @@ def convert():
     url, mode, q = d.get("url", ""), d.get("mode"), str(d.get("quality", ""))
     if not valid(url) or mode not in ("mp3", "mp4") or not q.isdigit():
         return jsonify(error="Invalid request."), 400
+    if sum(j["status"] == "running" for j in JOBS.values()) >= MAX_JOBS:
+        return jsonify(error="Server is busy. Try again in a minute."), 429
     jid = uuid.uuid4().hex[:12]
-    JOBS[jid] = {"status": "running", "progress": 0, "stage": "Downloading"}
+    JOBS[jid] = {"status": "running", "progress": 0, "stage": "Downloading", "t": time.time()}
     threading.Thread(target=run_job, args=(jid, url, mode, q), daemon=True).start()
     return jsonify(id=jid)
 
@@ -114,7 +136,7 @@ def job(jid):
     j = JOBS.get(jid)
     if not j:
         return jsonify(error="Unknown job."), 404
-    return jsonify({k: v for k, v in j.items() if k != "file"})
+    return jsonify({k: v for k, v in j.items() if k not in ("file", "t")})
 
 
 @app.get("/download/<jid>")
@@ -128,4 +150,4 @@ def download(jid):
 if __name__ == "__main__":
     if not HAS_FFMPEG:
         print("WARNING: ffmpeg not found on PATH. Conversions will fail until it is installed.")
-    app.run(debug=False)
+    app.run(debug=False, port=int(os.environ.get("PORT", 5000)))

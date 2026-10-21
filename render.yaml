@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: yt-converter-web
+    runtime: docker
+    plan: starter        # paid plan = always on. "free" sleeps after ~15 min idle.
+    healthCheckPath: /
