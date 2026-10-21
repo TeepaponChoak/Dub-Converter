@@ -45,6 +45,8 @@ input::placeholder { color:var(--ink); opacity:.55; }
   padding:18px; border:0; border-radius:16px; cursor:pointer; background:var(--accent); color:var(--on-accent);
   transition:transform .15s, background .5s, opacity .2s; display:block; text-align:center; text-decoration:none; }
 .go[hidden] { display:none; }
+.go.ghost { background:transparent; color:var(--ink); border:2px solid var(--accent); }
+.go.ghost:hover { background:var(--panel); }
 .go:hover:not(:disabled) { transform:translateY(-2px); }
 .go:disabled { opacity:.45; cursor:not-allowed; }
 
@@ -94,6 +96,7 @@ footer { margin-top:56px; font-size:.85rem; opacity:.6; max-width:60ch; }
 
   <button class="go" id="go" disabled>Convert to MP3</button>
   <a class="go" id="dl" hidden>Download file</a>
+  <button class="go ghost" id="again" hidden>Convert another</button>
 
   <div class="tape" id="tape">
     <div class="row"><span id="stage">Downloading</span><span id="pct">0%</span></div>
@@ -122,7 +125,7 @@ function setMode(m) {
   $("go").textContent = "Convert to " + m.toUpperCase();
   reset();
 }
-function reset() { $("dl").hidden = true; $("go").hidden = false; $("tape").classList.remove("show","done"); }
+function reset() { $("again").hidden = true; $("dl").hidden = true; $("go").hidden = false; $("tape").classList.remove("show","done"); }
 function say(t, err) { $("msg").textContent = t || ""; $("msg").className = "msg" + (err ? " err" : ""); }
 async function api(path, body) {
   const r = await fetch(path, body ? {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)} : undefined);
@@ -173,12 +176,18 @@ async function check(id) {
   if (j.status === "done") {
     clearInterval(poll); $("tape").classList.add("done");
     $("dl").href = "/download/" + id; $("dl").textContent = "Download " + mode.toUpperCase();
-    $("dl").hidden = false; $("go").hidden = true; say("Ready. Your file is done.");
+    $("dl").hidden = false; $("again").hidden = false; $("go").hidden = true; say("Ready. Your file is done.");
   } else if (j.status === "error") {
     clearInterval(poll); $("tape").classList.remove("show"); $("go").disabled = false;
     say("Conversion failed: " + j.error, true);
   }
 }
+$("again").onclick = () => {
+  clearInterval(poll); reset(); say("");
+  $("url").value = ""; valid = false; $("go").disabled = true;
+  $("preview").classList.remove("show");
+  $("url").focus();
+};
 setMode("mp3");
 </script>
 </body>
