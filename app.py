@@ -46,6 +46,19 @@ threading.Thread(target=cleanup, daemon=True).start()
 HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"}
 
 
+def friendly(e):
+    msg = re.sub(r"\x1b\[[0-9;]*m", "", str(e)).split("\n")[0]
+    low = msg.lower()
+    if "sign in" in low or "not a bot" in low or "cookies" in low:
+        return ("YouTube is blocking this server (it asks to confirm you’re not a bot). "
+                "This is common on cloud hosts like Render. It usually works when run on your own computer.")
+    if "private" in low or "unavailable" in low or "age" in low:
+        return "That video is private, unavailable or age-restricted."
+    if "ffmpeg" in low:
+        return "ffmpeg isn’t installed or isn’t on your PATH. Install it, then restart this app."
+    return msg[:200] or "Couldn’t read that video."
+
+
 def valid(url):
     try:
         return urlparse(url).hostname in HOSTS
@@ -86,10 +99,8 @@ def run_job(jid, url, mode, quality):
         job.update(status="done", progress=100, stage="Ready",
                    file=str(OUT / f"{jid}.{mode}"), name=f"{name}.{mode}")
     except Exception as e:
-        msg = re.sub(r"\x1b\[[0-9;]*m", "", str(e)).split("\n")[0]
-        if "ffmpeg" in msg.lower():
-            msg = "ffmpeg isn’t installed or isn’t on your PATH. Install it, then restart this app."
-        job.update(status="error", error=msg[:200])
+        print("JOB ERROR:", e, flush=True)
+        job.update(status="error", error=friendly(e))
 
 
 @app.errorhandler(Exception)
@@ -118,8 +129,9 @@ def info():
             i = ydl.extract_info(url, download=False)
         return jsonify(title=i.get("title"), channel=i.get("uploader"),
                        thumbnail=i.get("thumbnail"), duration=i.get("duration"))
-    except Exception:
-        return jsonify(error="Couldn’t read that video. Check the link."), 400
+    except Exception as e:
+        print("INFO ERROR:", e, flush=True)
+        return jsonify(error=friendly(e)), 400
 
 
 @app.post("/api/convert")
