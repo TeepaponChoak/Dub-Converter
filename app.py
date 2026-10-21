@@ -150,4 +150,6 @@ def download(jid):
 if __name__ == "__main__":
     if not HAS_FFMPEG:
         print("WARNING: ffmpeg not found on PATH. Conversions will fail until it is installed.")
-    app.run(debug=False, port=int(os.environ.get("PORT", 5000)))
+    # On Render (PORT is set) listen on all interfaces; locally stay on 127.0.0.1.
+    host = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
+    app.run(debug=False, host=host, port=int(os.environ.get("PORT", 5000)))
