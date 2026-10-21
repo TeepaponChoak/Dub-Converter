@@ -1,0 +1,6 @@
+downloads/
+ffmpeg/
+__pycache__/
+*.pyc
+cookies.txt
+*.cookies

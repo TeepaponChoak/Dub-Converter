@@ -7,7 +7,8 @@ from urllib.parse import urlparse
 
 import shutil
 import yt_dlp
-from flask import Flask, jsonify, request, send_file, send_from_directory
+import hmac
+from flask import Flask, Response, jsonify, request, send_file, send_from_directory
 
 app = Flask(__name__, static_folder=None)
 BASE = Path(__file__).parent
@@ -23,6 +24,26 @@ for _c in (os.environ.get("FFMPEG_LOCATION"), BASE / "ffmpeg" / "bin", BASE / "f
         FFMPEG_DIR = str(_c)
         break
 HAS_FFMPEG = bool(FFMPEG_DIR or _sh.which("ffmpeg"))
+
+# Optional: route YouTube traffic through a proxy and/or use cookies (for cloud hosts like Render).
+#   YTDLP_PROXY   e.g. http://user:pass@host:port   (a residential proxy works best)
+#   cookies.txt   as a Render Secret File (/etc/secrets/cookies.txt) or path in COOKIES_FILE
+COOKIES_PATH = None
+_src = Path(os.environ.get("COOKIES_FILE", "/etc/secrets/cookies.txt"))
+if _src.exists():
+    COOKIES_PATH = "/tmp/cookies.txt"  # yt-dlp needs a writable copy
+    _sh.copyfile(_src, COOKIES_PATH)
+
+
+def common_opts():
+    o = {}
+    if os.environ.get("YTDLP_PROXY"):
+        o["proxy"] = os.environ["YTDLP_PROXY"]
+    if COOKIES_PATH:
+        o["cookiefile"] = COOKIES_PATH
+    return o
+
+
 MAX_JOBS = int(os.environ.get("MAX_JOBS", "3"))  # concurrent conversions
 KEEP_SECONDS = 1800                               # delete files/jobs after 30 min
 
@@ -51,7 +72,7 @@ def friendly(e):
     low = msg.lower()
     if "sign in" in low or "not a bot" in low or "cookies" in low:
         return ("YouTube is blocking this server (it asks to confirm you’re not a bot). "
-                "This is common on cloud hosts like Render. It usually works when run on your own computer.")
+                "Set a YTDLP_PROXY (residential proxy) or cookies on the server, or run the app on your own computer.")
     if "private" in low or "unavailable" in low or "age" in low:
         return "That video is private, unavailable or age-restricted."
     if "ffmpeg" in low:
@@ -82,7 +103,7 @@ def run_job(jid, url, mode, quality):
                 job.update(progress=96, stage="Converting")
 
     opts = {"outtmpl": str(OUT / f"{jid}.%(ext)s"), "noplaylist": True,
-            "quiet": True, "progress_hooks": [hook]}
+            "quiet": True, "progress_hooks": [hook], **common_opts()}
     if mode == "mp3":
         opts.update(format="bestaudio/best", postprocessors=[
             {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": quality}])
@@ -101,6 +122,18 @@ def run_job(jid, url, mode, quality):
     except Exception as e:
         print("JOB ERROR:", e, flush=True)
         job.update(status="error", error=friendly(e))
+
+
+@app.before_request
+def password_guard():
+    """If APP_PASSWORD is set, ask for it (any username). Protects your tunnel link."""
+    pw = os.environ.get("APP_PASSWORD")
+    if not pw:
+        return None
+    auth = request.authorization
+    if not auth or not hmac.compare_digest((auth.password or "").encode(), pw.encode()):
+        return Response("Password required", 401, {"WWW-Authenticate": 'Basic realm="Dub"'})
+    return None
 
 
 @app.errorhandler(Exception)
@@ -125,7 +158,7 @@ def info():
     if not valid(url):
         return jsonify(error="That doesn’t look like a YouTube link."), 400
     try:
-        with yt_dlp.YoutubeDL({"quiet": True, "noplaylist": True}) as ydl:
+        with yt_dlp.YoutubeDL({"quiet": True, "noplaylist": True, **common_opts()}) as ydl:
             i = ydl.extract_info(url, download=False)
         return jsonify(title=i.get("title"), channel=i.get("uploader"),
                        thumbnail=i.get("thumbnail"), duration=i.get("duration"))
