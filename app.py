@@ -98,6 +98,11 @@ def on_error(e):
     return jsonify(error=f"Server error: {getattr(e, 'description', str(e))}"), code
 
 
+@app.get("/static/<path:name>")
+def static_files(name):
+    return send_from_directory(BASE / "static", name)
+
+
 @app.get("/")
 def index():
     return send_from_directory(BASE, "index.html")
